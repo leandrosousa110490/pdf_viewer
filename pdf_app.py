@@ -1,12 +1,12 @@
 import os
 import sys
+import io
 import fitz  # PyMuPDF
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QFileDialog, QVBoxLayout, QHBoxLayout, 
                             QWidget, QPushButton, QLabel, QScrollArea, QSplitter,
-                            QTreeView, QToolBar, QStatusBar, QComboBox, QSlider,
-                            QColorDialog, QSpinBox, QFrame, QMenu, QMessageBox, 
-                            QListWidget, QListWidgetItem)
-from PyQt6.QtGui import QPixmap, QImage, QAction, QIcon, QPainter, QPen, QColor, QCursor
+                            QListWidget, QListWidgetItem, QToolBar, QStatusBar, QComboBox, QSlider,
+                            QMessageBox)
+from PyQt6.QtGui import QPixmap, QImage, QAction, QIcon
 from PyQt6.QtCore import Qt, QSize, QRect, QPoint
 
 class PDFEditorWindow(QMainWindow):
@@ -16,18 +16,12 @@ class PDFEditorWindow(QMainWindow):
         self.current_page = 0
         self.total_pages = 0
         self.zoom_factor = 1.0
-        self.drawing = False
-        self.last_point = QPoint()
-        self.annotations = {}  # Dictionary to store annotations by page
-        self.current_tool = "select"  # Default tool
-        self.current_color = QColor(255, 0, 0)  # Default red
-        self.pen_width = 2
         self.recent_files = []
         
         self.init_ui()
         
     def init_ui(self):
-        self.setWindowTitle("PDF Editor")
+        self.setWindowTitle("PDF Viewer")
         self.setGeometry(100, 100, 1200, 800)
         
         # Create central widget and main layout
@@ -40,7 +34,7 @@ class PDFEditorWindow(QMainWindow):
         # Create recent files panel instead of file explorer
         self.file_list = self.create_recent_files_panel()
         
-        # Create right panel with PDF view and tools
+        # Create right panel with PDF view
         right_panel = QWidget()
         right_layout = QVBoxLayout(right_panel)
         
@@ -54,18 +48,11 @@ class PDFEditorWindow(QMainWindow):
         self.image_label = QLabel("Open a PDF file to start")
         self.image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.image_label.setMinimumSize(600, 600)
-        self.image_label.mousePressEvent = self.image_mouse_press
-        self.image_label.mouseMoveEvent = self.image_mouse_move
-        self.image_label.mouseReleaseEvent = self.image_mouse_release
         self.pdf_layout.addWidget(self.image_label)
         
         self.pdf_view.setWidget(self.pdf_container)
         
-        # Create tool panel
-        tool_panel = self.create_tool_panel()
-        
         right_layout.addWidget(self.pdf_view)
-        right_layout.addWidget(tool_panel)
         
         # Add widgets to splitter
         splitter.addWidget(self.file_list)
@@ -141,19 +128,6 @@ class PDFEditorWindow(QMainWindow):
                 margin: -4px 0;
                 border-radius: 7px;
             }
-            QToolButton {
-                background-color: transparent;
-                border: none;
-                border-radius: 3px;
-                padding: 3px;
-            }
-            QToolButton:hover {
-                background-color: #3E3E40;
-            }
-            QToolButton:checked {
-                background-color: #3E3E40;
-                border: 1px solid #0078D7;
-            }
             QListWidget::item {
                 padding: 5px;
                 border-bottom: 1px solid #3F3F46;
@@ -186,51 +160,6 @@ class PDFEditorWindow(QMainWindow):
         layout.addWidget(title_label)
         layout.addWidget(self.recent_list)
         layout.addWidget(open_btn)
-        
-        return panel
-    
-    def create_tool_panel(self):
-        panel = QFrame()
-        panel.setFrameShape(QFrame.Shape.StyledPanel)
-        panel.setMaximumHeight(50)
-        
-        layout = QHBoxLayout(panel)
-        
-        # Tool buttons
-        select_btn = QPushButton("Select")
-        select_btn.clicked.connect(lambda: self.set_tool("select"))
-        
-        highlight_btn = QPushButton("Highlight")
-        highlight_btn.clicked.connect(lambda: self.set_tool("highlight"))
-        
-        pen_btn = QPushButton("Pen")
-        pen_btn.clicked.connect(lambda: self.set_tool("pen"))
-        
-        eraser_btn = QPushButton("Eraser")
-        eraser_btn.clicked.connect(lambda: self.set_tool("eraser"))
-        
-        text_btn = QPushButton("Text")
-        text_btn.clicked.connect(lambda: self.set_tool("text"))
-        
-        # Color button
-        color_btn = QPushButton("Color")
-        color_btn.clicked.connect(self.choose_color)
-        
-        # Line width control
-        width_label = QLabel("Width:")
-        self.width_spin = QSpinBox()
-        self.width_spin.setRange(1, 10)
-        self.width_spin.setValue(self.pen_width)
-        self.width_spin.valueChanged.connect(self.set_pen_width)
-        
-        layout.addWidget(select_btn)
-        layout.addWidget(highlight_btn)
-        layout.addWidget(pen_btn)
-        layout.addWidget(eraser_btn)
-        layout.addWidget(text_btn)
-        layout.addWidget(color_btn)
-        layout.addWidget(width_label)
-        layout.addWidget(self.width_spin)
         
         return panel
         
@@ -285,88 +214,10 @@ class PDFEditorWindow(QMainWindow):
         
         self.toolbar.addSeparator()
         
-        # Save action
-        save_action = QAction("Save", self)
-        save_action.triggered.connect(self.save_file)
-        self.toolbar.addAction(save_action)
-        
         # Extract text action
         extract_action = QAction("Extract Text", self)
         extract_action.triggered.connect(self.extract_text)
         self.toolbar.addAction(extract_action)
-
-    def set_tool(self, tool):
-        self.current_tool = tool
-        self.statusBar.showMessage(f"Tool: {tool.capitalize()}")
-        
-        if tool == "select":
-            self.image_label.setCursor(Qt.CursorShape.ArrowCursor)
-        elif tool in ["pen", "highlight"]:
-            self.image_label.setCursor(Qt.CursorShape.CrossCursor)
-        elif tool == "eraser":
-            self.image_label.setCursor(Qt.CursorShape.PointingHandCursor)
-        elif tool == "text":
-            self.image_label.setCursor(Qt.CursorShape.IBeamCursor)
-    
-    def choose_color(self):
-        color = QColorDialog.getColor(self.current_color, self)
-        if color.isValid():
-            self.current_color = color
-    
-    def set_pen_width(self, width):
-        self.pen_width = width
-
-    def image_mouse_press(self, event):
-        if not self.doc or self.current_tool == "select":
-            return
-            
-        self.drawing = True
-        self.last_point = event.position().toPoint()
-        
-        # Initialize annotations list for current page if it doesn't exist
-        if self.current_page not in self.annotations:
-            self.annotations[self.current_page] = []
-            
-    def image_mouse_move(self, event):
-        if not self.drawing:
-            return
-            
-        current_point = event.position().toPoint()
-        
-        # Create a copy of the original pixmap to draw on
-        pixmap = self.image_label.pixmap().copy()
-        painter = QPainter(pixmap)
-        
-        if self.current_tool == "pen":
-            pen = QPen(self.current_color, self.pen_width, Qt.PenStyle.SolidLine, 
-                     Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin)
-            painter.setPen(pen)
-            painter.drawLine(self.last_point, current_point)
-            
-        elif self.current_tool == "highlight":
-            pen = QPen(QColor(self.current_color.red(), self.current_color.green(), 
-                           self.current_color.blue(), 100), 
-                     self.pen_width * 3, Qt.PenStyle.SolidLine, 
-                     Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin)
-            painter.setPen(pen)
-            painter.drawLine(self.last_point, current_point)
-            
-        painter.end()
-        self.image_label.setPixmap(pixmap)
-        
-        # Store the annotation
-        self.annotations[self.current_page].append({
-            "tool": self.current_tool,
-            "start": (self.last_point.x(), self.last_point.y()),
-            "end": (current_point.x(), current_point.y()),
-            "color": self.current_color.getRgb(),
-            "width": self.pen_width
-        })
-        
-        self.last_point = current_point
-        
-    def image_mouse_release(self, event):
-        self.drawing = False
 
     def on_recent_file_clicked(self, item):
         file_path = item.data(Qt.ItemDataRole.UserRole)
@@ -409,9 +260,6 @@ class PDFEditorWindow(QMainWindow):
             self.total_pages = len(self.doc)
             self.current_page = 0
             
-            # Reset annotations
-            self.annotations = {}
-            
             # Update page combo box
             self.page_combo.clear()
             for i in range(self.total_pages):
@@ -422,7 +270,7 @@ class PDFEditorWindow(QMainWindow):
             
             # Update window title with filename
             filename = os.path.basename(file_path)
-            self.setWindowTitle(f"PDF Editor - {filename}")
+            self.setWindowTitle(f"PDF Viewer - {filename}")
             
             # Add to recent files
             self.add_to_recent_files(file_path)
@@ -436,53 +284,34 @@ class PDFEditorWindow(QMainWindow):
         if not self.doc or page_num < 0 or page_num >= self.total_pages:
             return
             
-        # Get the page
-        page = self.doc[page_num]
-        
-        # Render to pixmap
-        zoom = 1.5 * self.zoom_factor  # Base zoom factor
-        mat = fitz.Matrix(zoom, zoom)
-        pix = page.get_pixmap(matrix=mat)
-        
-        # Convert to QImage
-        img = QImage(pix.samples, pix.width, pix.height, pix.stride, QImage.Format.RGB888)
-        
-        # Convert to QPixmap and display
-        pixmap = QPixmap.fromImage(img)
-        
-        # Draw any annotations
-        if page_num in self.annotations and self.annotations[page_num]:
-            painter = QPainter(pixmap)
+        try:
+            # Get the page
+            page = self.doc[page_num]
             
-            for annotation in self.annotations[page_num]:
-                tool = annotation["tool"]
-                start_x, start_y = annotation["start"]
-                end_x, end_y = annotation["end"]
-                color = QColor(*annotation["color"])
-                width = annotation["width"]
-                
-                if tool == "pen":
-                    pen = QPen(color, width, Qt.PenStyle.SolidLine, 
-                             Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin)
-                    painter.setPen(pen)
-                    painter.drawLine(start_x, start_y, end_x, end_y)
-                    
-                elif tool == "highlight":
-                    pen = QPen(QColor(color.red(), color.green(), color.blue(), 100), 
-                             width * 3, Qt.PenStyle.SolidLine, 
-                             Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin)
-                    painter.setPen(pen)
-                    painter.drawLine(start_x, start_y, end_x, end_y)
-                    
-            painter.end()
-        
-        self.image_label.setPixmap(pixmap)
-        
-        # Update current page
-        self.current_page = page_num
-        self.page_combo.setCurrentIndex(page_num)
-        
-        self.statusBar.showMessage(f"Page {page_num + 1} of {self.total_pages}")
+            # Render to PNG in memory
+            zoom = 1.5 * self.zoom_factor  # Base zoom factor
+            mat = fitz.Matrix(zoom, zoom)
+            pix = page.get_pixmap(matrix=mat)
+            
+            # Convert pixmap to PNG data
+            png_data = pix.tobytes("png")
+            
+            # Load PNG data into QImage
+            pixmap = QPixmap()
+            pixmap.loadFromData(png_data)
+            
+            # Set the pixmap
+            self.image_label.setPixmap(pixmap)
+            
+            # Update current page
+            self.current_page = page_num
+            self.page_combo.setCurrentIndex(page_num)
+            
+            self.statusBar.showMessage(f"Page {page_num + 1} of {self.total_pages}")
+            
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to display page: {str(e)}")
+            self.statusBar.showMessage(f"Error displaying page: {str(e)}")
     
     def extract_text(self):
         if not self.doc:
@@ -528,52 +357,12 @@ class PDFEditorWindow(QMainWindow):
     def zoom_slider_changed(self, value):
         self.zoom_factor = value / 100
         self.display_page(self.current_page)
-        
-    def save_file(self):
-        if not self.doc:
-            QMessageBox.warning(self, "Warning", "No document open")
-            self.statusBar.showMessage("No document open")
-            return
-            
-        file_path, _ = QFileDialog.getSaveFileName(
-            self, "Save PDF File", "", "PDF Files (*.pdf)"
-        )
-        
-        if file_path:
-            try:
-                # For now, just save the original document
-                # In a more advanced implementation, we would apply annotations to the PDF
-                self.doc.save(file_path)
-                filename = os.path.basename(file_path)
-                self.statusBar.showMessage(f"Saved to: {filename}")
-                QMessageBox.information(self, "Success", f"Document saved as {filename}")
-            except Exception as e:
-                QMessageBox.critical(self, "Error", f"Failed to save PDF: {str(e)}")
-                self.statusBar.showMessage(f"Error saving: {str(e)}")
                 
     def closeEvent(self, event):
         """Handle application close event"""
         if self.doc:
-            reply = QMessageBox.question(
-                self, 'Confirm Exit',
-                "Do you want to save changes before exiting?",
-                QMessageBox.StandardButton.Save | 
-                QMessageBox.StandardButton.Discard | 
-                QMessageBox.StandardButton.Cancel,
-                QMessageBox.StandardButton.Save
-            )
-            
-            if reply == QMessageBox.StandardButton.Save:
-                self.save_file()
-                # Only proceed with closing if save is completed
-                if event.spontaneous():
-                    event.accept()
-            elif reply == QMessageBox.StandardButton.Cancel:
-                event.ignore()
-            else:
-                event.accept()
-        else:
-            event.accept()
+            self.doc.close()
+        event.accept()
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
