@@ -2116,8 +2116,11 @@ class PDFViewerApp(QMainWindow):
             self.close_loading_dialog()
 
 # --- Main Execution ---
-if __name__ == "__main__":
+def main():
     app = QApplication(sys.argv)
     main_window = PDFViewerApp()
     main_window.show()
-    sys.exit(app.exec())
+    return app.exec()
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -1,6 +1,6 @@
 # PDF Editor
 
-A feature-rich PDF viewer and editor built with Python, PyQt6, and PyMuPDF.
+A feature-rich PDF viewer and editor built with Python, PySide6, and PyMuPDF.
 
 ## Features
 
@@ -43,9 +43,32 @@ python pdf_app.py
 - **Extract Text**: Extract and view the text content of the current page
 - **Save**: Save the current document with annotations
 
+## GitHub Setup
+
+To upload this project to GitHub:
+
+1. Create a new repository on GitHub (without initializing it with a README, license, or .gitignore)
+2. Initialize the local repository and make the first commit:
+
+```bash
+git init
+git add .
+git commit -m "Initial commit"
+```
+
+3. Link your local repository to the GitHub repository:
+
+```bash
+git remote add origin https://github.com/yourusername/pdf-viewer.git
+git branch -M main
+git push -u origin main
+```
+
+4. Your code should now be available on GitHub!
+
 ## Dependencies
 
-- PyQt6: Modern UI framework
+- PySide6: Modern UI framework
 - PyMuPDF: PDF manipulation library
 - Pillow: Image processing
 
